@@ -140,9 +140,65 @@ def output_to_socket(post, clientSocket) -> None:
             error_message = f'{ex} occurred {ex.__class__}'
             logging.error(error_message)
             open_socket()
-
-
     # Do we need to receive from the socket?
+
+# NOT WORKING
+def scan(report_freq = None, reports = True, time_delta = None):
+    """ One Function to rule them all... both scan live and
+        scan history depending on the value of time_delta """
+
+    check_history = True
+    if not time_delta:
+        check_history = False
+
+    if type(time_delta) == int:
+        timed = timedelta(minutes=time_delta)
+
+    allowed_accounts = get_allowed_accounts()
+    count_posts = 0
+    pings = 0
+
+    if check_history:
+        blockchain = Blockchain(mode="head", blockchain_instance=hive)
+        start_time = datetime.utcnow() - timed
+        block_num = blockchain.get_estimated_block_num(start_time)
+        if reports:
+            logging.info('Started catching up')
+        stream = blockchain.stream(opNames=['custom_json'], start = block_num,
+                                max_batch_size = 50,
+                                raw_ops=False, threading=False)
+    else:
+
+
+    for post in stream:
+        post_time = post['timestamp'].replace(tzinfo=None)
+        time_dif = post_time - start_time
+        time_to_now = datetime.utcnow() - post_time
+        count_posts += 1
+        if reports:
+            if time_dif > report_freq:
+                timestamp = str(post['timestamp'])
+                output_status(timestamp, pings, count_posts, time_to_now)
+                start_time =post['timestamp'].replace(tzinfo=None)
+                count_posts = 0
+                pings = 0
+
+        if allowed_op_id(post['id']):
+            if (set(post['required_posting_auths']) & set(allowed_accounts)):
+                output(post)
+                pings += 1
+
+        if time_to_now < timedelta(seconds=2):
+            logging.info('block_num: ' + str(post['block_num']))
+            # Break out of the for loop we've caught up.
+            break
+
+    scan_time = datetime.utcnow() - scan_start_time
+    logging.info('Finished catching up at block_num: ' + str(post['block_num']) + ' in '+ str(scan_time))
+
+
+
+
 
 
 def scan_live(report_freq = None, reports = True):
