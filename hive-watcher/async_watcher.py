@@ -8,6 +8,7 @@ from beem.account import Account
 from beem.blockchain import Blockchain
 import uvloop
 from timeit import default_timer as timer
+import threading
 
 WATCHED_OPERATION_IDS = ["podping", "hive-hydra"]
 
@@ -18,6 +19,7 @@ blockchain = Blockchain(mode="head", blockchain_instance=hive)
 class Pings:
     total_pings = 0
     latest_block = 0
+
 
 
 def get_stream(block_num=None):
@@ -66,9 +68,10 @@ def allowed_op_id(operation_id) -> bool:
         return False
 
 
-async def get_url_from_blockchain(stream):
+async def get_url_from_blockchain(stream, url_q):
     """Fetchs one URL from the blockchain"""
     allowed_accounts = get_allowed_accounts()
+    start_time = timer()
     for post in stream:
         if allowed_op_id(post["id"]):
             if set(post["required_posting_auths"]) & allowed_accounts:
@@ -79,38 +82,61 @@ async def get_url_from_blockchain(stream):
                 data["timestamp"] = post.get("timestamp")
                 data["block_num"] = post.get("block_num")
                 if custom_data.get("url"):
-                    yield ((custom_data.get("url"),data))
+                    await url_q.put((custom_data.get("url"),data))
                     print("--------------------------------")
                 elif custom_data.get("urls"):
                     for url in custom_data.get("urls"):
-                        yield ((url, data))
-        else:
-            pass
+                        await url_q.put((url, data))
 
 
 
-async def print_url_loop(stream, task_name=""):
+
+async def print_url_loop(url_q):
     """Main loop fetching urls from hive and printing them"""
-    start_time = timer()
-    async for url, data in get_url_from_blockchain(stream):
-        Pings.total_pings += 1
-        Pings.latest_block = data.get('block_num')
-        print(
-            f"Feed Updated - {data.get('timestamp')} - {data.get('trx_id')} "
-            f"- {url} - {data['required_posting_auths']} - {task_name}"
-        )
 
-        # print(Pings.latest_block, Pings.total_pings)
+    async def get_from_queue():
+        try:
+            return await url_q.get()
+        except RuntimeError:
+            return
+
+    while True:
+        try:
+            url, data = await asyncio.wait_for(
+                get_from_queue(), timeout=0.01
+            )
+            if url:
+                Pings.total_pings += 1
+                Pings.latest_block = data.get('block_num')
+                print(
+                    f"Feed Updated - {data.get('timestamp')} - {data.get('trx_id')} "
+                    f"- {url} - {data['required_posting_auths']}"
+                )
+        except asyncio.TimeoutError:
+            pass
+        except RuntimeError:
+            return
+        except Exception as ex:
+            print(f"{ex} occurred")
+        finally:
+            # Always get the time of the loop
+            # duration = timer() - start
+            pass
 
 def run(loop=None):
     if not loop:  # pragma: no cover
         uvloop.install()
         loop = asyncio.new_event_loop()
 
-    stream = get_stream(block_num=54745819)
     live = get_stream()
-    loop.create_task(print_url_loop(stream,"history"))
-    loop.create_task(print_url_loop(live,"live"))
+    old = get_stream(54744709)
+    url_q = asyncio.Queue(loop=loop)
+
+    # Adding a Queue system for holding URLs and sending them out
+    threading.Thread(target=get_url_from_blockchain(old,url_q), daemon=True).start()
+    # threading.Thread(target=get_url_from_blockchain(live,url_q), daemon=True).start()
+
+    loop.create_task(print_url_loop(url_q))
 
     try:
         loop.run_forever()

@@ -8,6 +8,10 @@ from beem.block import Block
 from socket import AF_INET, SOCK_STREAM, socket
 from ipaddress import IPv4Address, IPv6Address, AddressValueError
 
+import asyncio
+import zmq.asyncio
+import uvloop
+
 import zmq
 from zmq.sugar.frame import Message
 
@@ -192,15 +196,54 @@ class Config():
             cls.client_socket.close
 
     @classmethod
-    async def zsocket_send(cls, url):
+    def zsocket_send(cls, url):
         """ Send a single URL to the zsocket specified in startup """
         if cls.zsocket:
             cls.zsocket.send_string(url)
             msg = cls.zsocket.recv_string()
 
+    @classmethod
+    def zsocket_setup(cls,loop) -> None:
+        """ Open up the outbound zmq connection as an async loop """
+
+        context = zmq.asyncio.Context()
+        ip_port_params = cls.use_zmq.split(":")
+        if len(ip_port_params) == 1:
+            cls.ip_address = "127.0.0.1"
+            cls.ip_port = ip_port_params[0]
+        else:
+            cls.ip_port = ip_port_params[1]
+            try:
+                cls.ip_address = IPv4Address(ip_port_params[0])
+            except AddressValueError:
+                cls.ip_address = IPv6Address(cls.ip_port)
+
+        cls.zsocket = context.socket(zmq.REQ, io_loop= loop)
+        cls.zsocket.connect(f"tcp://{cls.ip_address}:{cls.ip_port}")
+        cls.zsocket_test()
+        # if not loop.is_running():
+        #     loop.run_forever()
+
 
     @classmethod
-    def setup(cls):
+    def zsocket_test(cls) -> None:
+        """ Tests the outbound socket to see if something is open """
+        # Seeing if there is a socket we can connect to.
+        s = socket()
+        try:
+            s.connect((cls.ip_address.exploded, int(cls.ip_port)))
+            cls.zmq_down = False
+        except Exception as ex:
+            cls.zmq_down = f"Problem opening {cls.ip_address}:{cls.ip_port} - {ex}"
+        finally:
+            s.close()
+            # await asyncio.sleep(30)
+            # loop.create_task(cls.zsocket_test(loop=loop))
+
+
+
+    @classmethod
+    def setup(cls, loop):
         """ Setup the config """
         if cls.test:
             cls.use_test_node = True
@@ -267,29 +310,7 @@ class Config():
                 cls.ip_address = IPv6Address(ip_port_params[0])
             cls.port = int(ip_port_params[1])
 
+
         cls.zsocket = None
         if cls.use_zmq:
-            context = zmq.Context()
-            ip_port_params = cls.use_zmq.split(":")
-            if len(ip_port_params) == 1:
-                cls.ip_address = "127.0.0.1"
-                cls.ip_port = ip_port_params[0]
-            else:
-                cls.ip_port = ip_port_params[1]
-                try:
-                    cls.ip_address = IPv4Address(ip_port_params[0])
-                except AddressValueError:
-                    cls.ip_address = IPv6Address(cls.ip_port)
-
-            cls.zsocket = context.socket(zmq.REQ)
-            cls.zsocket.connect(f"tcp://{cls.ip_address}:{cls.ip_port}")
-
-            # Seeing if there is a socket we can connect to.
-            s = socket()
-            try:
-                s.connect((cls.ip_address.exploded, int(cls.ip_port)))
-                cls.zmq_down = False
-            except Exception as ex:
-                cls.zmq_down = f"Problem opening {cls.ip_address}:{cls.ip_port} - {ex}"
-            finally:
-                s.close()
+            cls.zsocket_setup(loop)

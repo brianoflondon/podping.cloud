@@ -8,6 +8,8 @@ from beem.account import Account
 
 from config import Config
 
+import asyncio
+
 WATCHED_OPERATION_IDS = ["podping", "hive-hydra"]
 DIAGNOSTIC_OPERATION_IDS = ["podping-startup"]
 TEST_NODE = ["https://testnet.openhive.network"]
@@ -244,18 +246,22 @@ def scan_chain(history):
 
 
 
-def main() -> None:
+def run(loop=None) -> None:
+    """ Run is the new Main """
     logging.basicConfig(
         level=logging.INFO,
         format=f"%(asctime)s - %(levelname)s %(name)s %(threadName)s : -  %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S%z",
     )
-    Config.setup()
 
+    if not loop:  # pragma: no cover
+        loop = asyncio.new_event_loop()
 
+    Config.setup(loop=loop)
 
     """ do we want periodic reports? """
     if Config.show_reports:
+        # loop.create_task()
         if Config.use_test_node:
             logging.info("---------------> Using Test Node " + TEST_NODE[0])
         else:
@@ -282,5 +288,6 @@ def main() -> None:
         logging.info("history_only is set. exiting")
 
 
+
 if __name__ == "__main__":
-    main()
+    run()
