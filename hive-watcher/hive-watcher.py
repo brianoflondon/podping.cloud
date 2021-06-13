@@ -261,6 +261,15 @@ def main() -> None:
         else:
             logging.info("---------------> Using Main Hive Chain ")
 
+
+    if Config.use_zmq:
+        if Config.zmq_down:
+            logging.warning(f"ZMQ Output socket failed to open - {Config.zmq_down}")
+        else:
+            logging.info(f"ZMQ Output working on - {Config.ip_address}:{Config.ip_port}")
+
+
+
     # scan_history will look back over the last 1 hour reporting every 15 minute chunk
     if Config.history:
         scan_chain(history=True)

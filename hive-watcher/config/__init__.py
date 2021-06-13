@@ -192,11 +192,11 @@ class Config():
             cls.client_socket.close
 
     @classmethod
-    def zsocket_send(cls, url):
+    async def zsocket_send(cls, url):
         """ Send a single URL to the zsocket specified in startup """
         if cls.zsocket:
-            cls.zsocket.send(url.encode(),flags=zmq.NOBLOCK)
-            msg = cls.zsocket.recv()
+            cls.zsocket.send_string(url)
+            msg = cls.zsocket.recv_string()
 
 
     @classmethod
@@ -283,3 +283,13 @@ class Config():
 
             cls.zsocket = context.socket(zmq.REQ)
             cls.zsocket.connect(f"tcp://{cls.ip_address}:{cls.ip_port}")
+
+            # Seeing if there is a socket we can connect to.
+            s = socket()
+            try:
+                s.connect((cls.ip_address.exploded, int(cls.ip_port)))
+                cls.zmq_down = False
+            except Exception as ex:
+                cls.zmq_down = f"Problem opening {cls.ip_address}:{cls.ip_port} - {ex}"
+            finally:
+                s.close()
