@@ -209,7 +209,7 @@ class Config():
         context = zmq.asyncio.Context()
         ip_port_params = cls.use_zmq.split(":")
         if len(ip_port_params) == 1:
-            cls.ip_address = "127.0.0.1"
+            cls.ip_address = IPv4Address("127.0.0.1")
             cls.ip_port = ip_port_params[0]
         else:
             cls.ip_port = ip_port_params[1]
