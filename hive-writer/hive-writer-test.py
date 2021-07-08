@@ -13,7 +13,8 @@ context = zmq.Context()
 # Socket to talk to server
 print("Connecting to hello world server…")
 zsocket = context.socket(zmq.REQ)
-zsocket.connect("tcp://10.0.0.5:9999")
+# zsocket.connect("tcp://10.0.0.5:9999")
+zsocket.connect("tcp://127.0.0.1:9998")
 
 
 def old_socket():
